@@ -157,7 +157,13 @@
     const el = document.createElement("div");
     el.className = "msg msg-bot thinking";
     el.setAttribute("aria-label", "ElifGPT is thinking");
-    el.innerHTML = 'thinking<span class="dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span>';
+    el.innerHTML =
+      '<svg class="logo" viewBox="0 0 32 32" aria-hidden="true" focusable="false">' +
+      '<g class="stem" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round">' +
+      '<path d="M16 28.5V18"/><path d="M16 18c0-5-7.5-4.5-7.5-10"/><path d="M16 18V8"/><path d="M16 18c0-5 7.5-4.5 7.5-10"/></g>' +
+      '<g fill="currentColor"><circle class="node" cx="8.5" cy="5.6" r="2.7"/><circle class="node" cx="16" cy="4.8" r="2.7"/>' +
+      '<circle class="node" cx="23.5" cy="5.6" r="2.7"/></g></svg>' +
+      '<span>thinking<span class="dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span></span>';
     log.append(el);
     return el;
   }
@@ -170,9 +176,13 @@
     meta.className = "msg-meta";
     const n = reply.branches.toLocaleString("en-US");
     const t = formatMs(reply.ms);
-    meta.textContent = reply.branches === 0
-      ? `answered from memory, no branches needed (${t})`
-      : `checked ${n} branch${reply.branches === 1 ? "" : "es"} in ${t}`;
+    if (reply.branches === 0) {
+      meta.textContent = `answered from memory, no branches needed (${t})`;
+    } else {
+      const count = document.createElement("b");
+      count.textContent = n;
+      meta.append("checked ", count, ` branch${reply.branches === 1 ? "" : "es"} in ${t}`);
+    }
     el.append(meta);
   }
 

@@ -6,13 +6,29 @@
   <meta name="color-scheme" content="light dark">
   <meta name="description" content="A chatbot made entirely of if statements, compiled from C to WebAssembly.">
   <title>ElifGPT</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="style.css">
   <script src="app.js" defer></script>
 </head>
 <body class="is-empty">
   <main class="shell">
     <header class="masthead">
-      <h1 class="title">ElifGPT</h1>
+      <h1 class="title">
+        <svg class="logo" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+          <g fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M16 28.5V18"/>
+            <path d="M16 18c0-5-7.5-4.5-7.5-10"/>
+            <path d="M16 18V8"/>
+            <path d="M16 18c0-5 7.5-4.5 7.5-10"/>
+          </g>
+          <g fill="currentColor">
+            <circle cx="8.5" cy="5.6" r="2.7"/>
+            <circle cx="16" cy="4.8" r="2.7"/>
+            <circle cx="23.5" cy="5.6" r="2.7"/>
+          </g>
+        </svg>
+        <span>ElifGPT</span>
+      </h1>
       <p class="subtitle">10,000,000 lines of if statements. Zero neural networks.</p>
 
       <div class="loading" id="loading" role="status">
