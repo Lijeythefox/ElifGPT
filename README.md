@@ -3,11 +3,14 @@
 A chatbot made entirely of `if` / `else if` statements. No neural network, no machine learning, no lookup tables: every answer is a hardcoded branch in a very, very long chain of C.
 
 - **CLI version:** about 10,000,000 lines of C, about 5,000,000 branches, a ~950 MB executable.
-- **Web version:** about 1,000,000 lines of the same C, compiled to a ~30 MB WebAssembly module.
+- **Web version, Lite tab:** about 1,000,000 lines of the same C, compiled to a ~30 MB WebAssembly module.
+- **Web version, Full tab:** the whole 10,000,000 lines as a ~328 MB WebAssembly module, split into 45 MB parts. It only loads after you tick "I have read and understand the above" and press Load, because it uses around 1.5 GB of RAM.
 
 ## How it works
 
 `gen.py` writes the C source. It crosses templates ("do you like X", "how do i Y", "capital of Z", math, primes, Roman numerals, unit conversions...) with big vocab lists, adds "hey / so / yo ... bro / lol / pls" variants of each phrasing, and writes every combination out as its own `else if (strcmp(...) == 0)` branch.
+
+If a message doesn't match exactly, `src/core.c` strips one filler word at a time (prefixes like "um", "hey elifgpt", "quick question" and suffixes like "pls", "bro", "rn"), each found by its own elif chain, and checks the whole brain again. So "yo bro hey what's 287 x 143 lol pls" still works.
 
 | Path | What it is |
 | --- | --- |
@@ -17,8 +20,8 @@ A chatbot made entirely of `if` / `else if` statements. No neural network, no ma
 | `src/main.c` | The terminal chat loop |
 | `src/web.c` | WebAssembly exports for the browser |
 | `build.py` | Compiles the CLI with Zig |
-| `build_web.py` | Compiles the web version to `docs/elifgpt.wasm` |
-| `docs/` | The static site (`index.html`, `style.css`, `app.js`, `elifgpt.wasm`) |
+| `build_web.py` | Compiles the Lite web build to `docs/elifgpt.wasm`, or with `--full` the 10M build to `docs/full/` |
+| `docs/` | The static site (`index.html`, `style.css`, `app.js`, `elifgpt.wasm`, `full/`) |
 
 ## Requirements
 
@@ -54,15 +57,28 @@ py -m http.server -d docs
 
 Then open http://localhost:8000.
 
+### The Full (10M) tab
+
+```
+py gen.py
+py build_web.py --full
+```
+
+This compiles the 10M-line `gen/` folder (the same source as the CLI) to WebAssembly, which takes about 8 minutes, and splits the 328 MB result into `docs/full/elifgpt-10m.part00` … `part07` plus a `manifest.json`. GitHub rejects files over 100 MB, so the parts stay at 45 MB. The page streams the parts back together and compiles them with `WebAssembly.compileStreaming`.
+
+Measured in Node (the same V8 engine as Chrome): about 1.5 GB peak memory, a first answer of a couple of seconds while the browser compiles the code it needs, and about 150–350 ms per answer after that.
+
 The page has no build step: `docs/index.html`, `docs/style.css` and `docs/app.js` are plain files. `app.js` loads the wasm with a tiny WASI shim (only `clock_time_get` is imported), writes your message into wasm memory, and calls `elif_respond()`. Time and date replies are filled in by JavaScript so they use your local time zone. The "checked N branches" line under each reply is a real counter, incremented by every `if` the C code evaluates.
 
 ## Publish on GitHub Pages
 
-1. Commit `docs/` (including `docs/elifgpt.wasm`, which is about 30 MB and under GitHub's 100 MB file limit) and push to GitHub.
+1. Commit `docs/` (including `docs/elifgpt.wasm` and the `docs/full/` parts, all under GitHub's 100 MB file limit) and push to GitHub.
 2. In the repository, go to **Settings → Pages**.
 3. Under **Build and deployment**, set **Source** to **Deploy from a branch**.
 4. Pick your branch (for example `main`) and the **`/docs`** folder, then click **Save**.
 5. After a minute or two the site is live at https://lijeythefox.github.io/ElifGPT/.
+
+GitHub Pages has a soft bandwidth limit of 100 GB a month. Each load of the Full tab downloads about 328 MB, so that's roughly 300 full loads a month before GitHub might complain. The Lite tab costs about 30 MB per visit.
 
 ## Release the 10M-line version
 

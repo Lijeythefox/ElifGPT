@@ -1,0 +1,39 @@
+{
+  "total": 343882611,
+  "lines": "10,009,968",
+  "branches": "4,984,065",
+  "parts": [
+    {
+      "file": "elifgpt-10m.part00",
+      "size": 47185920
+    },
+    {
+      "file": "elifgpt-10m.part01",
+      "size": 47185920
+    },
+    {
+      "file": "elifgpt-10m.part02",
+      "size": 47185920
+    },
+    {
+      "file": "elifgpt-10m.part03",
+      "size": 47185920
+    },
+    {
+      "file": "elifgpt-10m.part04",
+      "size": 47185920
+    },
+    {
+      "file": "elifgpt-10m.part05",
+      "size": 47185920
+    },
+    {
+      "file": "elifgpt-10m.part06",
+      "size": 47185920
+    },
+    {
+      "file": "elifgpt-10m.part07",
+      "size": 13581171
+    }
+  ]
+}

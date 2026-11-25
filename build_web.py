@@ -1,4 +1,6 @@
+import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -6,12 +8,15 @@ from concurrent.futures import ThreadPoolExecutor
 
 import ziglang
 
+FULL = "--full" in sys.argv
 ROOT = os.path.dirname(os.path.abspath(__file__))
 SRC = os.path.join(ROOT, "src")
-GEN = os.path.join(ROOT, "gen_web")
-OBJ = os.path.join(ROOT, "build_web")
+GEN = os.path.join(ROOT, "gen" if FULL else "gen_web")
+OBJ = os.path.join(ROOT, "build_web_full" if FULL else "build_web")
 DOCS = os.path.join(ROOT, "docs")
-WASM = os.path.join(DOCS, "elifgpt.wasm")
+FULL_DIR = os.path.join(DOCS, "full")
+WASM = os.path.join(OBJ, "elifgpt-10m.wasm") if FULL else os.path.join(DOCS, "elifgpt.wasm")
+PART_SIZE = 45 * 1024 * 1024
 ZIG = os.path.join(os.path.dirname(ziglang.__file__), "zig.exe" if os.name == "nt" else "zig")
 JOBS = int(os.environ.get("JOBS", os.cpu_count() or 4))
 FLAGS = ["-target", "wasm32-wasi", "-O2", "-g0", "-w", "-std=gnu11"]
@@ -27,9 +32,36 @@ def compile_one(job):
     return src, (p.stderr if p.returncode else None)
 
 
+def split_full():
+    os.makedirs(FULL_DIR, exist_ok=True)
+    for f in os.listdir(FULL_DIR):
+        if f.startswith("elifgpt-10m.part") or f == "manifest.json":
+            os.remove(os.path.join(FULL_DIR, f))
+    with open(os.path.join(GEN, "stats.h"), encoding="ascii") as f:
+        stats = f.read()
+    lines = re.search(r'ELIF_LINES_STR "([^"]+)"', stats).group(1)
+    params = re.search(r'ELIF_PARAMS_STR "([^"]+)"', stats).group(1)
+    parts = []
+    with open(WASM, "rb") as src:
+        i = 0
+        while True:
+            chunk = src.read(PART_SIZE)
+            if not chunk:
+                break
+            name = f"elifgpt-10m.part{i:02d}"
+            with open(os.path.join(FULL_DIR, name), "wb") as out:
+                out.write(chunk)
+            parts.append({"file": name, "size": len(chunk)})
+            i += 1
+    manifest = {"total": sum(p["size"] for p in parts), "lines": lines, "branches": params, "parts": parts}
+    with open(os.path.join(FULL_DIR, "manifest.json"), "w", encoding="ascii") as f:
+        json.dump(manifest, f, indent=2)
+    print(f"split into {len(parts)} parts of up to {PART_SIZE // (1024 * 1024)} MB in {FULL_DIR}")
+
+
 def main():
     if not os.path.exists(os.path.join(GEN, "stats.h")):
-        sys.exit("gen_web/ is missing. Run: py gen.py --web")
+        sys.exit(f"{os.path.basename(GEN)}/ is missing. Run: py gen.py{'' if FULL else ' --web'}")
     os.makedirs(OBJ, exist_ok=True)
     os.makedirs(DOCS, exist_ok=True)
     os.environ.setdefault("ZIG_LOCAL_CACHE_DIR", os.path.join(OBJ, "zig-cache"))
@@ -56,6 +88,8 @@ def main():
     if p.returncode:
         sys.exit(f"link failed:\n{p.stderr[:4000]}")
     print(f"wrote {WASM} ({os.path.getsize(WASM) / (1024 * 1024):,.1f} MB) in {time.time() - start:.0f}s")
+    if FULL:
+        split_full()
 
 
 if __name__ == "__main__":

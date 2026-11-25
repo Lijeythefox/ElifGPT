@@ -69,6 +69,148 @@ a {
   background: var(--accent-soft);
 }
 
+[hidden] {
+  display: none !important;
+}
+
+.tabs {
+  display: inline-flex;
+  gap: 2px;
+  margin-top: 16px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--field);
+}
+
+.tab {
+  font: inherit;
+  font-size: 0.8125rem;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  border-radius: 999px;
+  padding: 4px 14px;
+  cursor: pointer;
+  transition: color 0.15s, background-color 0.15s;
+}
+
+.tab:hover {
+  color: var(--fg);
+}
+
+.tab[aria-selected="true"] {
+  color: var(--accent-ink);
+  background: var(--accent-soft);
+  font-weight: 600;
+}
+
+.tab-sub {
+  font-weight: 400;
+  opacity: 0.75;
+}
+
+.tab:focus-visible {
+  border-radius: 999px;
+}
+
+body.is-empty .tabs {
+  margin-top: 24px;
+}
+
+.gate {
+  width: min(560px, 100%);
+  margin-top: 24px;
+  padding: 20px 22px;
+  text-align: left;
+  font-size: 0.9375rem;
+  background: var(--field);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+}
+
+.gate p {
+  margin: 0 0 12px;
+}
+
+.gate-title {
+  margin: 0 0 8px;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.gate-list {
+  margin: 0 0 12px;
+  padding-left: 1.2em;
+}
+
+.gate-list li {
+  margin-bottom: 6px;
+}
+
+.gate-list li::marker {
+  color: var(--accent);
+}
+
+.gate-note {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.gate-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 16px 0 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.gate-check input {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  flex: none;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.gate-load {
+  font: inherit;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--send-fg);
+  background: var(--accent);
+  border: 0;
+  border-radius: 999px;
+  padding: 9px 20px;
+  cursor: pointer;
+  transition: opacity 0.15s, box-shadow 0.15s;
+}
+
+.gate-load:not(:disabled):hover {
+  box-shadow: 0 4px 14px var(--accent-glow);
+}
+
+.gate-load:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.gate-load:focus-visible {
+  border-radius: 999px;
+}
+
+.gate-progress {
+  margin-top: 16px;
+}
+
+.gate-progress.is-error .loading-text {
+  color: var(--fg);
+}
+
 .logo {
   display: inline-block;
   flex: none;

@@ -2,6 +2,7 @@ gen/
 gen_web/
 build/
 build_web/
+build_web_full/
 *.exe
 *.o
 __pycache__/

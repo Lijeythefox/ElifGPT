@@ -97,7 +97,11 @@ static const char *skip_prefix_word(const char *t, const char *const *list)
 
 static void normalize_math(const char *in, char *dst)
 {
-    static const char *const filler[] = {"hey ", "yo ", "so ", "ok ", "okay ", NULL};
+    static const char *const filler[] = {"hey elifgpt ", "quick question ", "elifgpt ", "ok so ", "hey ", "yo ", "so ",
+                                         "ok ", "okay ", "um ", "uh ", "bro ", "dude ", "wait ", "please ", "pls ",
+                                         "lol ", "and ", "also ", "but ", "well ", NULL};
+    static const char *const tails[] = {" please", " pls", " plz", " bro", " lol", " lmao", " elifgpt", " rn", " fr",
+                                        " man", " dude", " tho", " thanks", " thx", " haha", NULL};
     static const char *const asks[] = {"what is", "whats", "what does", "calculate", "solve", "compute",
                                        "how much is", "tell me", "what do you get for", NULL};
     char s[MAXLEN], t2[MAXLEN], u[MAXLEN], v[MAXLEN];
@@ -130,8 +134,21 @@ static void normalize_math(const char *in, char *dst)
         len--;
     memmove(t2, t, len);
     t2[len] = '\0';
-    t = skip_prefix_exact(t2, filler);
-    t = skip_prefix_word(t, asks);
+    for (int changed = 1; changed;) {
+        changed = 0;
+        for (int i = 0; tails[i]; i++) {
+            if (ends(t2, tails[i]) && strlen(t2) > strlen(tails[i])) {
+                t2[strlen(t2) - strlen(tails[i])] = '\0';
+                changed = 1;
+            }
+        }
+        const char *stripped = skip_prefix_exact(t2, filler);
+        if (stripped != t2 && *stripped) {
+            memmove(t2, stripped, strlen(stripped) + 1);
+            changed = 1;
+        }
+    }
+    t = skip_prefix_word(t2, asks);
     strcpy(u, t);
     len = strlen(u);
     if (ends(u, "equals"))
@@ -190,6 +207,200 @@ const char *elif_expand(const char *r, int leave_clock_to_host)
         snprintf(out, sizeof out, "My dynamic branch '%s' broke. Even my elifs have bugs.", code);
     }
     return out;
+}
+
+static void cut_front(char *m, size_t n)
+{
+    memmove(m, m + n, strlen(m + n) + 1);
+}
+
+static void cut_back(char *m, size_t n)
+{
+    m[strlen(m) - n] = '\0';
+}
+
+#define PREFIX(p) (starts(m, p) && m[sizeof(p) - 1] != '\0' && (cut_front(m, sizeof(p) - 1), 1))
+#define SUFFIX(s) (strlen(m) > sizeof(s) - 1 && ends(m, s) && (cut_back(m, sizeof(s) - 1), 1))
+
+static int strip_prefix(char *m)
+{
+    if (PREFIX("hey elifgpt "))
+        return 1;
+    else if (PREFIX("yo elifgpt "))
+        return 1;
+    else if (PREFIX("hi elifgpt "))
+        return 1;
+    else if (PREFIX("quick question "))
+        return 1;
+    else if (PREFIX("i was wondering "))
+        return 1;
+    else if (PREFIX("can you tell me "))
+        return 1;
+    else if (PREFIX("excuse me "))
+        return 1;
+    else if (PREFIX("question "))
+        return 1;
+    else if (PREFIX("elifgpt "))
+        return 1;
+    else if (PREFIX("ok so "))
+        return 1;
+    else if (PREFIX("okay so "))
+        return 1;
+    else if (PREFIX("so like "))
+        return 1;
+    else if (PREFIX("hey "))
+        return 1;
+    else if (PREFIX("hi "))
+        return 1;
+    else if (PREFIX("hello "))
+        return 1;
+    else if (PREFIX("yo "))
+        return 1;
+    else if (PREFIX("so "))
+        return 1;
+    else if (PREFIX("ok "))
+        return 1;
+    else if (PREFIX("okay "))
+        return 1;
+    else if (PREFIX("um "))
+        return 1;
+    else if (PREFIX("umm "))
+        return 1;
+    else if (PREFIX("uh "))
+        return 1;
+    else if (PREFIX("uhh "))
+        return 1;
+    else if (PREFIX("hmm "))
+        return 1;
+    else if (PREFIX("bro "))
+        return 1;
+    else if (PREFIX("bruh "))
+        return 1;
+    else if (PREFIX("dude "))
+        return 1;
+    else if (PREFIX("man "))
+        return 1;
+    else if (PREFIX("wait "))
+        return 1;
+    else if (PREFIX("well "))
+        return 1;
+    else if (PREFIX("also "))
+        return 1;
+    else if (PREFIX("and "))
+        return 1;
+    else if (PREFIX("but "))
+        return 1;
+    else if (PREFIX("like "))
+        return 1;
+    else if (PREFIX("lol "))
+        return 1;
+    else if (PREFIX("please "))
+        return 1;
+    else if (PREFIX("pls "))
+        return 1;
+    else if (PREFIX("plz "))
+        return 1;
+    else if (PREFIX("actually "))
+        return 1;
+    else if (PREFIX("honestly "))
+        return 1;
+    else if (PREFIX("seriously "))
+        return 1;
+    else if (PREFIX("random question "))
+        return 1;
+    else if (PREFIX("real quick "))
+        return 1;
+    else if (PREFIX("tell me "))
+        return 1;
+    else
+        return 0;
+}
+
+static int strip_suffix(char *m)
+{
+    if (SUFFIX(" right now"))
+        return 1;
+    else if (SUFFIX(" real quick"))
+        return 1;
+    else if (SUFFIX(" for me"))
+        return 1;
+    else if (SUFFIX(" elifgpt"))
+        return 1;
+    else if (SUFFIX(" please"))
+        return 1;
+    else if (SUFFIX(" pls"))
+        return 1;
+    else if (SUFFIX(" plz"))
+        return 1;
+    else if (SUFFIX(" bro"))
+        return 1;
+    else if (SUFFIX(" bruh"))
+        return 1;
+    else if (SUFFIX(" lol"))
+        return 1;
+    else if (SUFFIX(" lmao"))
+        return 1;
+    else if (SUFFIX(" lmfao"))
+        return 1;
+    else if (SUFFIX(" haha"))
+        return 1;
+    else if (SUFFIX(" xd"))
+        return 1;
+    else if (SUFFIX(" man"))
+        return 1;
+    else if (SUFFIX(" dude"))
+        return 1;
+    else if (SUFFIX(" tho"))
+        return 1;
+    else if (SUFFIX(" though"))
+        return 1;
+    else if (SUFFIX(" rn"))
+        return 1;
+    else if (SUFFIX(" fr"))
+        return 1;
+    else if (SUFFIX(" ngl"))
+        return 1;
+    else if (SUFFIX(" thanks"))
+        return 1;
+    else if (SUFFIX(" thx"))
+        return 1;
+    else if (SUFFIX(" ty"))
+        return 1;
+    else if (SUFFIX(" ok"))
+        return 1;
+    else if (SUFFIX(" okay"))
+        return 1;
+    else if (SUFFIX(" again"))
+        return 1;
+    else if (SUFFIX(" now"))
+        return 1;
+    else if (SUFFIX(" then"))
+        return 1;
+    else if (SUFFIX(" anyway"))
+        return 1;
+    else if (SUFFIX(" exactly"))
+        return 1;
+    else if (SUFFIX(" quickly"))
+        return 1;
+    else
+        return 0;
+}
+
+static const char *exact_with_filler(const char *m_in, const char *e)
+{
+    static char m[MAXLEN];
+    const char *r;
+    snprintf(m, sizeof m, "%s", m_in);
+    for (;;) {
+        if ((r = exact_brain(m, e)) != NULL)
+            return r;
+        else if (strip_suffix(m))
+            continue;
+        else if (strip_prefix(m))
+            continue;
+        else
+            return NULL;
+    }
 }
 
 static const char *respond(const char *raw, const char *m, const char *e)
@@ -256,7 +467,7 @@ static const char *respond(const char *raw, const char *m, const char *e)
     else if (IS("scissors")) {
         return "I pick paper. I always pick paper. It's hardcoded. ...Scissors beats paper. Defeated by my own code.";
     }
-    else if ((r = exact_brain(m, e)) != NULL) {
+    else if ((r = exact_with_filler(m, e)) != NULL) {
         return r;
     }
     else if ((r = keyword_brain(m, e)) != NULL) {

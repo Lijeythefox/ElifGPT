@@ -31,15 +31,49 @@
       </h1>
       <p class="subtitle">10,000,000 lines of if statements. Zero neural networks.</p>
 
+      <div class="tabs" role="tablist" aria-label="Version">
+        <button type="button" class="tab" role="tab" id="tab-lite" data-engine="lite" aria-selected="true" aria-controls="log-lite">
+          Lite <span class="tab-sub">1M lines</span>
+        </button>
+        <button type="button" class="tab" role="tab" id="tab-full" data-engine="full" aria-selected="false" aria-controls="log-full" tabindex="-1">
+          Full <span class="tab-sub">10M lines</span>
+        </button>
+      </div>
+
       <div class="loading" id="loading" role="status">
         <div class="bar" id="bar"><div class="bar-fill" id="bar-fill"></div></div>
         <p class="loading-text" id="loading-text">loading 1,000,000 lines of elif...</p>
       </div>
 
+      <section class="gate" id="gate" aria-labelledby="gate-title" hidden>
+        <h2 class="gate-title" id="gate-title">Before you load the full version</h2>
+        <p>
+          This tab runs the complete ElifGPT: <strong id="gate-lines">10,009,968</strong> lines of C and about
+          5 million if statements, compiled to WebAssembly. It's the joke taken all the way, and your browser will feel it.
+        </p>
+        <ul class="gate-list">
+          <li><strong>Download:</strong> about <span id="gate-size">328</span> MB, all at once. Avoid this on mobile data.</li>
+          <li><strong>Memory:</strong> this one tab will probably use around 1.5 GB of RAM or more. It may slow down or freeze while it loads, and it may crash, especially on phones, tablets and older computers.</li>
+          <li><strong>Time:</strong> the download can take a few minutes, the first answer can freeze the tab for several seconds while your browser compiles the code, and every answer after that checks up to 5 million branches.</li>
+          <li><strong>Nothing is installed.</strong> It all runs inside this tab; closing or reloading the tab frees the memory.</li>
+        </ul>
+        <p class="gate-note">The Lite tab answers most of the same questions for a fraction of the cost.</p>
+        <label class="gate-check">
+          <input type="checkbox" id="gate-ack">
+          <span>I have read and understand the above</span>
+        </label>
+        <button type="button" class="gate-load" id="gate-load" disabled>Load the 10M version</button>
+        <div class="gate-progress" id="gate-progress" role="status" hidden>
+          <div class="bar" id="full-bar"><div class="bar-fill" id="full-bar-fill"></div></div>
+          <p class="loading-text" id="full-loading-text">downloading...</p>
+        </div>
+      </section>
+
       <div class="chips" id="chips" hidden></div>
     </header>
 
-    <section class="log" id="log" aria-live="polite" aria-label="Conversation"></section>
+    <section class="log" id="log-lite" role="tabpanel" aria-labelledby="tab-lite" aria-live="polite"></section>
+    <section class="log" id="log-full" role="tabpanel" aria-labelledby="tab-full" aria-live="polite" hidden></section>
   </main>
 
   <div class="dock" id="dock">

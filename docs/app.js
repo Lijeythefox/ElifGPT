@@ -1,7 +1,8 @@
 (() => {
   "use strict";
 
-  const WASM_URL = "elifgpt.wasm";
+  const LITE_URL = "elifgpt.wasm";
+  const FULL_MANIFEST = "full/manifest.json";
   const EXAMPLES = [
     "is 99991 prime?",
     "what's 287 x 143",
@@ -19,31 +20,39 @@
   const CHIPS = ["is 99991 prime?", "pizza or tacos", "who is socrates", "how do i exit vim"];
   const CYCLE_MS = 3000;
   const MAX_LINES = 5;
+  const LOGO_SVG =
+    '<svg class="logo" viewBox="0 0 32 32" aria-hidden="true" focusable="false">' +
+    '<g class="stem" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round">' +
+    '<path d="M16 28.5V18"/><path d="M16 18c0-5-7.5-4.5-7.5-10"/><path d="M16 18V8"/><path d="M16 18c0-5 7.5-4.5 7.5-10"/></g>' +
+    '<g fill="currentColor"><circle class="node" cx="8.5" cy="5.6" r="2.7"/><circle class="node" cx="16" cy="4.8" r="2.7"/>' +
+    '<circle class="node" cx="23.5" cy="5.6" r="2.7"/></g></svg>';
 
   const $ = (id) => document.getElementById(id);
   const body = document.body;
-  const log = $("log");
   const input = $("input");
   const send = $("send");
   const form = $("composer");
   const ghost = $("ghost");
   const ghostText = $("ghost-text");
   const chips = $("chips");
-  const loading = $("loading");
-  const bar = $("bar");
-  const barFill = $("bar-fill");
-  const loadingText = $("loading-text");
   const dock = $("dock");
+  const tabs = [...document.querySelectorAll(".tab")];
+  const gate = $("gate");
+  const gateAck = $("gate-ack");
+  const gateLoad = $("gate-load");
 
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
   const canHover = window.matchMedia("(hover: hover) and (pointer: fine)");
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
 
-  let elif = null;
-  let memory = null;
-  let busy = false;
+  const engines = {
+    lite: { key: "lite", state: "idle", exports: null, memory: null, log: $("log-lite"), busy: false },
+    full: { key: "full", state: "idle", exports: null, memory: null, log: $("log-full"), busy: false },
+  };
+  let active = engines.lite;
   let suggestion = 0;
+  let manifest = null;
 
   function syncDockHeight() {
     document.documentElement.style.setProperty("--dock-h", `${dock.offsetHeight}px`);
@@ -51,14 +60,14 @@
   new ResizeObserver(syncDockHeight).observe(dock);
   syncDockHeight();
 
-  function wasiImports() {
+  function wasiImports(engine) {
     const wasi = {
       clock_time_get(_id, _precision, ptr) {
-        new DataView(memory.buffer).setBigUint64(ptr, BigInt(Date.now()) * 1000000n, true);
+        new DataView(engine.memory.buffer).setBigUint64(ptr, BigInt(Date.now()) * 1000000n, true);
         return 0;
       },
       random_get(ptr, len) {
-        crypto.getRandomValues(new Uint8Array(memory.buffer, ptr, len));
+        crypto.getRandomValues(new Uint8Array(engine.memory.buffer, ptr, len));
         return 0;
       },
       proc_exit(code) {
@@ -99,8 +108,121 @@
     return bytes;
   }
 
-  function readCString(ptr) {
-    const view = new Uint8Array(memory.buffer);
+  function partsStream(parts, total, onProgress) {
+    let index = 0;
+    let reader = null;
+    let loaded = 0;
+    return new ReadableStream({
+      async pull(controller) {
+        for (;;) {
+          if (!reader) {
+            if (index >= parts.length) {
+              controller.close();
+              return;
+            }
+            const res = await fetch(`full/${parts[index++].file}`);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            reader = res.body.getReader();
+          }
+          const { done, value } = await reader.read();
+          if (done) {
+            reader = null;
+            continue;
+          }
+          loaded += value.length;
+          onProgress(loaded, total);
+          controller.enqueue(value);
+          return;
+        }
+      },
+    });
+  }
+
+  async function start(engine, module) {
+    const instance = await WebAssembly.instantiate(module, wasiImports(engine));
+    engine.exports = instance.exports;
+    engine.memory = instance.exports.memory;
+    if (engine.exports._initialize) engine.exports._initialize();
+    engine.exports.elif_seed((Math.random() * 0xffffffff) >>> 0);
+    engine.state = "ready";
+  }
+
+  async function loadLite() {
+    const engine = engines.lite;
+    const bar = $("bar");
+    const fill = $("bar-fill");
+    engine.state = "loading";
+    try {
+      const bytes = await fetchWithProgress(LITE_URL, (p) => {
+        if (p < 0) bar.classList.add("is-indeterminate");
+        else fill.style.width = `${Math.round(p * 100)}%`;
+      });
+      bar.classList.remove("is-indeterminate");
+      fill.style.width = "100%";
+      await start(engine, await WebAssembly.compile(bytes));
+    } catch (err) {
+      console.error(err);
+      engine.state = "error";
+      $("loading").classList.add("is-error");
+      bar.hidden = true;
+      $("loading-text").textContent = "Couldn't load the elifs. Refresh the page to try again.";
+    }
+    render();
+  }
+
+  async function getManifest() {
+    if (manifest) return manifest;
+    const res = await fetch(FULL_MANIFEST);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    manifest = await res.json();
+    $("gate-size").textContent = Math.round(manifest.total / (1024 * 1024)).toLocaleString("en-US");
+    $("gate-lines").textContent = manifest.lines;
+    return manifest;
+  }
+
+  async function loadFull() {
+    const engine = engines.full;
+    if (engine.state === "loading" || engine.state === "ready") return;
+    engine.state = "loading";
+    const fill = $("full-bar-fill");
+    const bar = $("full-bar");
+    const text = $("full-loading-text");
+    $("gate-progress").hidden = false;
+    gateLoad.disabled = true;
+    gateAck.disabled = true;
+    render();
+    const mb = (n) => (n / (1024 * 1024)).toFixed(0);
+    try {
+      const m = await getManifest();
+      text.textContent = `downloading 0 of ${mb(m.total)} MB...`;
+      const stream = partsStream(m.parts, m.total, (loaded, total) => {
+        fill.style.width = `${Math.round((loaded / total) * 100)}%`;
+        text.textContent = loaded < total
+          ? `downloading ${mb(loaded)} of ${mb(total)} MB...`
+          : `compiling ${m.lines} lines of elif. This is the heavy part...`;
+      });
+      let module;
+      if (WebAssembly.compileStreaming) {
+        module = await WebAssembly.compileStreaming(new Response(stream, { headers: { "Content-Type": "application/wasm" } }));
+      } else {
+        module = await WebAssembly.compile(await new Response(stream).arrayBuffer());
+      }
+      text.textContent = "starting up...";
+      bar.classList.add("is-indeterminate");
+      await start(engine, module);
+    } catch (err) {
+      console.error(err);
+      engine.state = "error";
+      bar.hidden = true;
+      text.textContent = "The 10M version didn't load. Your browser may have run out of memory. Reload the page to try again, or use Lite.";
+      $("gate-progress").classList.add("is-error");
+    }
+    render();
+    if (active === engine && engine.state === "ready" && canHover.matches) input.focus();
+  }
+
+  function readCString(engine, ptr) {
+    const view = new Uint8Array(engine.memory.buffer);
     let end = ptr;
     while (view[end] !== 0) end++;
     return decoder.decode(view.subarray(ptr, end));
@@ -121,18 +243,19 @@
     return `My dynamic branch '${code}' broke. Even my elifs have bugs.`;
   }
 
-  function ask(text) {
-    const cap = elif.elif_capacity() - 1;
+  function ask(engine, text) {
+    const x = engine.exports;
+    const cap = x.elif_capacity() - 1;
     let bytes = encoder.encode(text);
     if (bytes.length > cap) bytes = bytes.subarray(0, cap);
-    const ptr = elif.elif_input();
-    const view = new Uint8Array(memory.buffer);
+    const ptr = x.elif_input();
+    const view = new Uint8Array(engine.memory.buffer);
     view.set(bytes, ptr);
     view[ptr + bytes.length] = 0;
     const t0 = performance.now();
-    const out = elif.elif_respond(ptr);
+    const out = x.elif_respond(ptr);
     const ms = performance.now() - t0;
-    return { text: expandHostReply(readCString(out)), branches: elif.elif_branches(), ms };
+    return { text: expandHostReply(readCString(engine, out)), branches: x.elif_branches(), ms };
   }
 
   function formatMs(ms) {
@@ -146,24 +269,18 @@
     window.scrollTo({ top: document.documentElement.scrollHeight, behavior: reducedMotion.matches ? "auto" : "smooth" });
   }
 
-  function addUser(text) {
+  function addUser(log, text) {
     const el = document.createElement("div");
     el.className = "msg msg-user";
     el.textContent = text;
     log.append(el);
   }
 
-  function addThinking() {
+  function addThinking(log) {
     const el = document.createElement("div");
     el.className = "msg msg-bot thinking";
     el.setAttribute("aria-label", "ElifGPT is thinking");
-    el.innerHTML =
-      '<svg class="logo" viewBox="0 0 32 32" aria-hidden="true" focusable="false">' +
-      '<g class="stem" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round">' +
-      '<path d="M16 28.5V18"/><path d="M16 18c0-5-7.5-4.5-7.5-10"/><path d="M16 18V8"/><path d="M16 18c0-5 7.5-4.5 7.5-10"/></g>' +
-      '<g fill="currentColor"><circle class="node" cx="8.5" cy="5.6" r="2.7"/><circle class="node" cx="16" cy="4.8" r="2.7"/>' +
-      '<circle class="node" cx="23.5" cy="5.6" r="2.7"/></g></svg>' +
-      '<span>thinking<span class="dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span></span>';
+    el.innerHTML = `${LOGO_SVG}<span>thinking<span class="dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span></span>`;
     log.append(el);
     return el;
   }
@@ -174,13 +291,12 @@
     el.textContent = reply.text;
     const meta = document.createElement("div");
     meta.className = "msg-meta";
-    const n = reply.branches.toLocaleString("en-US");
     const t = formatMs(reply.ms);
     if (reply.branches === 0) {
       meta.textContent = `answered from memory, no branches needed (${t})`;
     } else {
       const count = document.createElement("b");
-      count.textContent = n;
+      count.textContent = reply.branches.toLocaleString("en-US");
       meta.append("checked ", count, ` branch${reply.branches === 1 ? "" : "es"} in ${t}`);
     }
     el.append(meta);
@@ -190,21 +306,21 @@
   const nextFrame = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
 
   async function submit(text) {
+    const engine = active;
     text = text.trim();
-    if (!text || busy || !elif) return;
-    busy = true;
-    body.classList.remove("is-empty");
-    addUser(text);
+    if (!text || engine.busy || engine.state !== "ready") return;
+    engine.busy = true;
+    addUser(engine.log, text);
     input.value = "";
     autosize();
-    updateControls();
-    const thinking = addThinking();
+    render();
+    const thinking = addThinking(engine.log);
     scrollToEnd();
     const started = performance.now();
     await nextFrame();
     let reply;
     try {
-      reply = ask(text);
+      reply = ask(engine, text);
     } catch (err) {
       console.error(err);
       reply = { text: "Something broke inside my elifs. Refresh the page and try again.", branches: 0, ms: 0 };
@@ -212,9 +328,9 @@
     const wait = 400 + Math.random() * 500 - (performance.now() - started);
     if (wait > 0) await sleep(wait);
     fillReply(thinking, reply);
-    scrollToEnd();
-    busy = false;
-    updateControls();
+    engine.busy = false;
+    render();
+    if (active === engine) scrollToEnd();
   }
 
   function autosize() {
@@ -225,10 +341,35 @@
     input.style.overflowY = input.scrollHeight - 12 > max ? "auto" : "hidden";
   }
 
-  function updateControls() {
-    const empty = input.value.length === 0;
-    send.disabled = !elif || busy || input.value.trim().length === 0;
-    ghost.classList.toggle("is-hidden", !empty || !elif);
+  function render() {
+    const ready = active.state === "ready";
+    const empty = active.log.childElementCount === 0;
+    body.classList.toggle("is-empty", empty);
+    body.dataset.engine = active.key;
+    for (const t of tabs) {
+      const on = t.dataset.engine === active.key;
+      t.setAttribute("aria-selected", String(on));
+      t.tabIndex = on ? 0 : -1;
+    }
+    engines.lite.log.hidden = active !== engines.lite;
+    engines.full.log.hidden = active !== engines.full;
+    $("loading").hidden = !(active === engines.lite && engines.lite.state !== "ready");
+    gate.hidden = !(active === engines.full && engines.full.state !== "ready");
+    chips.hidden = !(ready && empty);
+    input.disabled = !ready;
+    input.setAttribute(
+      "aria-label",
+      ready ? `Message ElifGPT ${active === engines.full ? "Full" : "Lite"}` : "Message ElifGPT (not loaded yet)",
+    );
+    send.disabled = !ready || active.busy || input.value.trim().length === 0;
+    ghost.classList.toggle("is-hidden", input.value.length > 0 || !ready);
+  }
+
+  function setActive(key, focusTab) {
+    active = engines[key];
+    if (key === "full" && engines.full.state === "idle") getManifest().catch(() => {});
+    render();
+    if (focusTab) tabs.find((t) => t.dataset.engine === key).focus();
   }
 
   function showSuggestion(i) {
@@ -236,8 +377,7 @@
   }
 
   function cycleSuggestion() {
-    if (!elif) return;
-    if (input.value.length > 0) return;
+    if (active.state !== "ready" || input.value.length > 0) return;
     const next = (suggestion + 1) % EXAMPLES.length;
     if (reducedMotion.matches) {
       suggestion = next;
@@ -263,21 +403,40 @@
     }
   }
 
+  for (const t of tabs) {
+    t.addEventListener("click", () => setActive(t.dataset.engine, false));
+    t.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+        e.preventDefault();
+        const i = tabs.indexOf(t);
+        const next = tabs[(i + (e.key === "ArrowRight" ? 1 : tabs.length - 1)) % tabs.length];
+        setActive(next.dataset.engine, true);
+      }
+    });
+  }
+
+  gateAck.addEventListener("change", () => {
+    gateLoad.disabled = !gateAck.checked || engines.full.state === "loading";
+  });
+  gateLoad.addEventListener("click", () => {
+    if (gateAck.checked) loadFull();
+  });
+
   input.addEventListener("input", () => {
     autosize();
-    updateControls();
+    render();
   });
 
   input.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
       e.preventDefault();
       submit(input.value);
-    } else if (e.key === "Tab" && !e.shiftKey && input.value.length === 0 && elif) {
+    } else if (e.key === "Tab" && !e.shiftKey && input.value.length === 0 && active.state === "ready") {
       e.preventDefault();
       input.value = EXAMPLES[suggestion];
       input.setSelectionRange(input.value.length, input.value.length);
       autosize();
-      updateControls();
+      render();
     }
   });
 
@@ -287,39 +446,11 @@
     input.focus();
   });
 
-  async function boot() {
-    showSuggestion(0);
-    ghost.classList.add("is-hidden");
-    try {
-      const bytes = await fetchWithProgress(WASM_URL, (p) => {
-        if (p < 0) {
-          bar.classList.add("is-indeterminate");
-        } else {
-          barFill.style.width = `${Math.round(p * 100)}%`;
-        }
-      });
-      bar.classList.remove("is-indeterminate");
-      barFill.style.width = "100%";
-      const { instance } = await WebAssembly.instantiate(bytes, wasiImports());
-      elif = instance.exports;
-      memory = elif.memory;
-      if (elif._initialize) elif._initialize();
-      elif.elif_seed((Math.random() * 0xffffffff) >>> 0);
-    } catch (err) {
-      console.error(err);
-      loading.classList.add("is-error");
-      bar.hidden = true;
-      loadingText.textContent = "Couldn't load the elifs. Refresh the page to try again.";
-      return;
-    }
-    loading.hidden = true;
-    chips.hidden = false;
-    input.disabled = false;
-    updateControls();
-    setInterval(cycleSuggestion, CYCLE_MS);
-    if (canHover.matches) input.focus();
-  }
-
   renderChips();
-  boot();
+  showSuggestion(0);
+  render();
+  setInterval(cycleSuggestion, CYCLE_MS);
+  loadLite().then(() => {
+    if (active === engines.lite && engines.lite.state === "ready" && canHover.matches) input.focus();
+  });
 })();
